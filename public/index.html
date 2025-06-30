@@ -1,0 +1,1606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>P2P Distributed File Sharing Network</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --secondary-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            --success-gradient: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            --danger-gradient: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+            --dark-gradient: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+            --glass-bg: rgba(255, 255, 255, 0.1);
+            --glass-border: rgba(255, 255, 255, 0.2);
+            --shadow-light: 0 8px 32px rgba(31, 38, 135, 0.37);
+            --shadow-heavy: 0 15px 35px rgba(31, 38, 135, 0.2);
+            --text-primary: #2d3748;
+            --text-secondary: #718096;
+            --bg-primary: #f7fafc;
+            --bg-secondary: #ffffff;
+            --border-color: #e2e8f0;
+            --border-radius: 16px;
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        /* Header Styles */
+        .header {
+            background: var(--primary-gradient);
+            color: white;
+            padding: 40px;
+            border-radius: var(--border-radius);
+            margin-bottom: 30px;
+            box-shadow: var(--shadow-heavy);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+            animation: float 6s ease-in-out infinite;
+        }
+
+        .header-content {
+            position: relative;
+            z-index: 2;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+            font-weight: 300;
+        }
+
+        .card {
+            background: var(--bg-secondary);
+            border-radius: var(--border-radius);
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            border: 1px solid var(--border-color);
+            transition: var(--transition);
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid var(--border-color);
+        }
+
+        .card-header i {
+            font-size: 1.5rem;
+            margin-right: 12px;
+            background: var(--primary-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .card-header h3 {
+            font-size: 1.4rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        /* Node Info Styles */
+        .node-info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .info-item {
+            background: linear-gradient(135deg, #f8f9ff 0%, #e8f2ff 100%);
+            padding: 20px;
+            border-radius: 12px;
+            border-left: 4px solid #667eea;
+            transition: var(--transition);
+        }
+
+        .info-item:hover {
+            transform: translateX(5px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+        }
+
+        .info-label {
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 5px;
+        }
+
+        .info-value {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            word-break: break-all;
+        }
+
+        /* Peer Management Styles */
+        .peer-controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-bottom: 25px;
+            align-items: center;
+        }
+
+        .input-group {
+            display: flex;
+            align-items: center;
+            background: var(--bg-secondary);
+            border: 2px solid var(--border-color);
+            border-radius: 12px;
+            overflow: hidden;
+            transition: var(--transition);
+            min-width: 250px;
+        }
+
+        .input-group:focus-within {
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .input-group i {
+            padding: 15px;
+            color: var(--text-secondary);
+            background: var(--bg-primary);
+        }
+
+        .input-group input {
+            border: none;
+            padding: 15px;
+            font-size: 1rem;
+            background: transparent;
+            color: var(--text-primary);
+            flex: 1;
+            outline: none;
+        }
+
+        .input-group input::placeholder {
+            color: var(--text-secondary);
+        }
+
+        /* Button Styles */
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: var(--transition);
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.5s;
+        }
+
+        .btn:hover::before {
+            left: 100%;
+        }
+
+        .btn-primary {
+            background: var(--primary-gradient);
+            color: white;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-success {
+            background: var(--success-gradient);
+            color: white;
+            box-shadow: 0 4px 15px rgba(79, 172, 254, 0.3);
+        }
+
+        .btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(79, 172, 254, 0.4);
+        }
+
+        .btn-danger {
+            background: var(--danger-gradient);
+            color: white;
+            box-shadow: 0 4px 15px rgba(250, 112, 154, 0.3);
+        }
+
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(250, 112, 154, 0.4);
+        }
+
+        .btn-info {
+            background: var(--dark-gradient);
+            color: white;
+            box-shadow: 0 4px 15px rgba(44, 62, 80, 0.3);
+        }
+
+        .btn-info:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(44, 62, 80, 0.4);
+        }
+
+        .btn-small {
+            padding: 8px 16px;
+            font-size: 0.9rem;
+        }
+
+        /* Peer List Styles */
+        .peers-grid {
+            display: grid;
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .peer-card {
+            background: var(--bg-secondary);
+            border: 2px solid var(--border-color);
+            border-radius: var(--border-radius);
+            padding: 25px;
+            transition: var(--transition);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .peer-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: var(--primary-gradient);
+            transform: scaleY(0);
+            transition: var(--transition);
+        }
+
+        .peer-card:hover::before {
+            transform: scaleY(1);
+        }
+
+        .peer-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            border-color: #667eea;
+        }
+
+        .peer-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 15px;
+        }
+
+        .peer-info h4 {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 5px;
+        }
+
+        .peer-url {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            font-family: 'Monaco', 'Menlo', monospace;
+            background: var(--bg-primary);
+            padding: 4px 8px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            display: inline-block;
+        }
+
+        .peer-stats {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 15px;
+        }
+
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9rem;
+        }
+
+        .stat-item i {
+            color: #667eea;
+        }
+
+        .status-badge {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-online {
+            background: linear-gradient(135deg, #48bb78, #38a169);
+            color: white;
+        }
+
+        .status-offline {
+            background: linear-gradient(135deg, #a0aec0, #718096);
+            color: white;
+        }
+
+        /* Upload Area Styles */
+        .upload-area {
+            border: 3px dashed var(--border-color);
+            border-radius: var(--border-radius);
+            padding: 60px 40px;
+            text-align: center;
+            background: linear-gradient(135deg, #f8f9ff 0%, #e8f2ff 100%);
+            transition: var(--transition);
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .upload-area::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: var(--primary-gradient);
+            opacity: 0;
+            transition: var(--transition);
+        }
+
+        .upload-area:hover::before {
+            opacity: 0.05;
+        }
+
+        .upload-area:hover {
+            border-color: #667eea;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.15);
+        }
+
+        .upload-area.dragover {
+            border-color: #667eea;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+
+        .upload-content {
+            position: relative;
+            z-index: 2;
+        }
+
+        .upload-icon {
+            font-size: 3rem;
+            color: #667eea;
+            margin-bottom: 20px;
+        }
+
+        .upload-area.dragover .upload-icon {
+            color: white;
+            animation: bounce 0.6s ease-in-out;
+        }
+
+        .upload-text {
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+
+        .upload-subtext {
+            color: var(--text-secondary);
+            font-size: 1rem;
+        }
+
+        .upload-area.dragover .upload-subtext {
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        /* Upload Mode Toggle */
+        .upload-mode-toggle {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            justify-content: center;
+        }
+
+        .mode-btn {
+            padding: 10px 20px;
+            border: 2px solid var(--border-color);
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: var(--transition);
+            font-weight: 500;
+        }
+
+        .mode-btn.active {
+            background: var(--primary-gradient);
+            color: white;
+            border-color: transparent;
+        }
+
+        .mode-btn:hover:not(.active) {
+            border-color: #667eea;
+            transform: translateY(-1px);
+        }
+
+        /* Peer Selection Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            backdrop-filter: blur(5px);
+        }
+
+        .modal-content {
+            background: var(--bg-secondary);
+            margin: 5% auto;
+            padding: 30px;
+            border-radius: var(--border-radius);
+            width: 90%;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: var(--shadow-heavy);
+            animation: modalSlideIn 0.3s ease-out;
+        }
+
+        @keyframes modalSlideIn {
+            from {
+                transform: translateY(-50px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid var(--border-color);
+        }
+
+        .modal-header h3 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .close {
+            color: var(--text-secondary);
+            font-size: 2rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .close:hover {
+            color: var(--text-primary);
+            transform: scale(1.1);
+        }
+
+        .peer-selection-list {
+            display: grid;
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+
+        .peer-selection-item {
+            display: flex;
+            align-items: center;
+            padding: 15px;
+            border: 2px solid var(--border-color);
+            border-radius: 12px;
+            transition: var(--transition);
+            cursor: pointer;
+        }
+
+        .peer-selection-item:hover {
+            border-color: #667eea;
+            background: var(--bg-primary);
+        }
+
+        .peer-selection-item.selected {
+            border-color: #667eea;
+            background: linear-gradient(135deg, #f8f9ff 0%, #e8f2ff 100%);
+        }
+
+        .peer-checkbox {
+            margin-right: 15px;
+            width: 20px;
+            height: 20px;
+            accent-color: #667eea;
+        }
+
+        .peer-selection-info {
+            flex: 1;
+        }
+
+        .peer-selection-name {
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 5px;
+        }
+
+        .peer-selection-url {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            font-family: 'Monaco', 'Menlo', monospace;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 15px;
+            justify-content: flex-end;
+        }
+
+        /* File List Styles */
+        .files-grid {
+            display: grid;
+            gap: 25px;
+            margin-top: 25px;
+        }
+
+        .file-card {
+            background: var(--bg-secondary);
+            border-radius: var(--border-radius);
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            border: 1px solid var(--border-color);
+            transition: var(--transition);
+        }
+
+        .file-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        .file-header {
+            padding: 25px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .file-title {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .file-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            color: white;
+        }
+
+        .file-icon.video {
+            background: var(--danger-gradient);
+        }
+
+        .file-icon.document {
+            background: var(--dark-gradient);
+        }
+
+        .file-icon.image {
+            background: var(--success-gradient);
+        }
+
+        .file-icon.other {
+            background: var(--primary-gradient);
+        }
+
+        .file-name {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 5px;
+            word-break: break-word;
+        }
+
+        .file-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .file-meta span {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .uploader-badge {
+            background: var(--primary-gradient);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .distribution-badge {
+            background: var(--success-gradient);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .chunk-distribution {
+            background: var(--bg-primary);
+            padding: 15px;
+            border-radius: 12px;
+            margin-top: 15px;
+        }
+
+        .chunk-distribution h5 {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .chunk-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .chunk-item {
+            background: white;
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            border: 1px solid var(--border-color);
+        }
+
+        .file-actions {
+            padding: 20px 25px;
+            background: var(--bg-primary);
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        /* Video Player Styles */
+        .video-container {
+            padding: 25px;
+            background: #000;
+            border-radius: 0 0 var(--border-radius) var(--border-radius);
+        }
+
+        .video-player {
+            width: 100%;
+            border-radius: 8px;
+            outline: none;
+        }
+
+        /* Status Messages */
+        .status-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            max-width: 400px;
+        }
+
+        .status {
+            padding: 16px 20px;
+            border-radius: 12px;
+            margin-bottom: 10px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            animation: slideIn 0.3s ease-out;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .status::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+        }
+
+        .status.success {
+            background: linear-gradient(135deg, #48bb78, #38a169);
+            color: white;
+        }
+
+        .status.error {
+            background: linear-gradient(135deg, #f56565, #e53e3e);
+            color: white;
+        }
+
+        .status.info {
+            background: linear-gradient(135deg, #4299e1, #3182ce);
+            color: white;
+        }
+
+        .status i {
+            font-size: 1.2rem;
+        }
+
+        /* Animations */
+        @keyframes float {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-20px) rotate(180deg); }
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes bounce {
+            0%, 20%, 60%, 100% { transform: translateY(0); }
+            40% { transform: translateY(-10px); }
+            80% { transform: translateY(-5px); }
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+
+        /* Loading Spinner */
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-secondary);
+        }
+
+        .empty-state i {
+            font-size: 4rem;
+            margin-bottom: 20px;
+            color: var(--border-color);
+        }
+
+        .empty-state h3 {
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+            color: var(--text-primary);
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .container {
+                padding: 15px;
+            }
+            
+            .header {
+                padding: 30px 20px;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .card {
+                padding: 20px;
+            }
+            
+            .peer-controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .input-group {
+                min-width: auto;
+            }
+            
+            .node-info-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .file-actions {
+                flex-direction: column;
+            }
+
+            .modal-content {
+                margin: 10% auto;
+                width: 95%;
+            }
+
+            .upload-mode-toggle {
+                flex-direction: column;
+            }
+        }
+
+        /* Scrollbar Styles */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-primary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--primary-gradient);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--secondary-gradient);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-content">
+                <h1><i class="fas fa-network-wired"></i> P2P File Sharing Network</h1>
+                <p>Advanced peer-to-peer distributed file sharing with selective peer distribution</p>
+            </div>
+        </div>
+
+        <!-- Node Information -->
+        <div class="card">
+            <div class="card-header">
+                <i class="fas fa-server"></i>
+                <h3>Node Information</h3>
+            </div>
+            <div id="nodeInfo" class="node-info-grid">
+                <div class="info-item pulse">
+                    <div class="info-label">Loading...</div>
+                    <div class="info-value">Please wait</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Peer Management -->
+        <div class="card">
+            <div class="card-header">
+                <i class="fas fa-users"></i>
+                <h3>Network Peers</h3>
+            </div>
+            
+            <div class="peer-controls">
+                <div class="input-group">
+                    <i class="fas fa-link"></i>
+                    <input type="text" id="peerUrl" placeholder="http://192.168.1.100:3001">
+                </div>
+                <div class="input-group">
+                    <i class="fas fa-tag"></i>
+                    <input type="text" id="peerName" placeholder="Peer Name (optional)">
+                </div>
+                <button class="btn btn-primary" onclick="connectToPeer()">
+                    <i class="fas fa-plus"></i> Connect
+                </button>
+                <button class="btn btn-info" onclick="refreshPeers()">
+                    <i class="fas fa-sync-alt"></i> Refresh
+                </button>
+                <button class="btn btn-danger" onclick="disconnectAll()">
+                    <i class="fas fa-unlink"></i> Disconnect All
+                </button>
+            </div>
+            
+            <div id="peersList" class="peers-grid"></div>
+        </div>
+
+        <!-- File Upload -->
+        <div class="card">
+            <div class="card-header">
+                <i class="fas fa-cloud-upload-alt"></i>
+                <h3>Upload Files</h3>
+            </div>
+            
+            <div class="upload-mode-toggle">
+                <div class="mode-btn active" id="allPeersMode" onclick="setUploadMode('all')">
+                    <i class="fas fa-globe"></i> Distribute to All Peers
+                </div>
+                <div class="mode-btn" id="selectPeersMode" onclick="setUploadMode('selective')">
+                    <i class="fas fa-users-cog"></i> Select Specific Peers
+                </div>
+            </div>
+            
+            <div class="upload-area" id="uploadArea">
+                <div class="upload-content">
+                    <div class="upload-icon">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                    </div>
+                    <div class="upload-text">Drag & Drop Files Here</div>
+                    <div class="upload-subtext" id="uploadSubtext">or click to browse • Files will be distributed across all connected peers</div>
+                </div>
+                <input type="file" id="fileInput" multiple style="display: none;">
+            </div>
+        </div>
+
+        <!-- File List -->
+        <div class="card">
+            <div class="card-header">
+                <i class="fas fa-folder-open"></i>
+                <h3>Network Files</h3>
+                <div style="margin-left: auto;">
+                    <button class="btn btn-primary btn-small" onclick="refreshFiles()">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                </div>
+            </div>
+            <div id="filesList" class="files-grid"></div>
+        </div>
+    </div>
+
+    <!-- Peer Selection Modal -->
+    <div id="peerSelectionModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-users-cog"></i> Select Peers for Distribution</h3>
+                <span class="close" onclick="closePeerSelectionModal()">&times;</span>
+            </div>
+            <div id="peerSelectionList" class="peer-selection-list"></div>
+            <div class="modal-actions">
+                <button class="btn btn-info" onclick="closePeerSelectionModal()">
+                    <i class="fas fa-times"></i> Cancel
+                </button>
+                <button class="btn btn-primary" onclick="uploadWithSelectedPeers()">
+                    <i class="fas fa-upload"></i> Upload to Selected Peers
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Status Container -->
+    <div id="statusContainer" class="status-container"></div>
+
+    <script>
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const statusContainer = document.getElementById('statusContainer');
+        const filesList = document.getElementById('filesList');
+        const nodeInfo = document.getElementById('nodeInfo');
+        const peersList = document.getElementById('peersList');
+        const peerSelectionModal = document.getElementById('peerSelectionModal');
+        const peerSelectionList = document.getElementById('peerSelectionList');
+        const uploadSubtext = document.getElementById('uploadSubtext');
+        
+        let thisNode = null;
+        let uploadMode = 'all'; // 'all' or 'selective'
+        let pendingFiles = [];
+        let availablePeers = [];
+
+        // Upload area interactions
+        uploadArea.addEventListener('click', () => fileInput.click());
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+        uploadArea.addEventListener('drop', handleDrop);
+        fileInput.addEventListener('change', handleFileSelect);
+
+        function setUploadMode(mode) {
+            uploadMode = mode;
+            document.getElementById('allPeersMode').classList.toggle('active', mode === 'all');
+            document.getElementById('selectPeersMode').classList.toggle('active', mode === 'selective');
+            
+            if (mode === 'all') {
+                uploadSubtext.textContent = 'or click to browse • Files will be distributed across all connected peers';
+            } else {
+                uploadSubtext.textContent = 'or click to browse • You will select specific peers for distribution';
+            }
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const files = Array.from(e.dataTransfer.files);
+            handleFileSelection(files);
+        }
+
+        function handleFileSelect(e) {
+            const files = Array.from(e.target.files);
+            handleFileSelection(files);
+        }
+
+        function handleFileSelection(files) {
+            if (uploadMode === 'selective') {
+                pendingFiles = files;
+                showPeerSelectionModal();
+            } else {
+                uploadFiles(files);
+            }
+        }
+
+        async function showPeerSelectionModal() {
+            try {
+                console.log('Fetching active peers...');
+                const response = await fetch('/active-peers');
+                
+                console.log('Response status:', response.status);
+                console.log('Response headers:', response.headers.get('content-type'));
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    const text = await response.text();
+                    console.error('Non-JSON response:', text);
+                    throw new Error('Server returned non-JSON response');
+                }
+                
+                const data = await response.json();
+                console.log('Active peers data:', data);
+                
+                availablePeers = data.peers;
+                
+                if (availablePeers.length === 0) {
+                    showStatus('No active peers available for selective distribution', 'error', 'fas fa-exclamation-triangle');
+                    return;
+                }
+                
+                displayPeerSelection(availablePeers);
+                peerSelectionModal.style.display = 'block';
+            } catch (error) {
+                console.error('Error in showPeerSelectionModal:', error);
+                showStatus(`Failed to load peers: ${error.message}`, 'error', 'fas fa-times-circle');
+            }
+        }
+
+        function displayPeerSelection(peers) {
+            peerSelectionList.innerHTML = peers.map(peer => `
+                <div class="peer-selection-item" onclick="togglePeerSelection('${peer.url}')">
+                    <input type="checkbox" class="peer-checkbox" id="peer-${peer.url}" onchange="togglePeerSelection('${peer.url}')">
+                    <div class="peer-selection-info">
+                        <div class="peer-selection-name">
+                            <i class="fas fa-desktop"></i> ${peer.name}
+                        </div>
+                        <div class="peer-selection-url">${peer.url}</div>
+                        <small><i class="fas fa-file"></i> ${peer.filesCount} files</small>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function togglePeerSelection(peerUrl) {
+            const checkbox = document.getElementById(`peer-${peerUrl}`);
+            const item = checkbox.closest('.peer-selection-item');
+            
+            checkbox.checked = !checkbox.checked;
+            item.classList.toggle('selected', checkbox.checked);
+        }
+
+        function closePeerSelectionModal() {
+            peerSelectionModal.style.display = 'none';
+            pendingFiles = [];
+        }
+
+        async function uploadWithSelectedPeers() {
+            const selectedPeers = availablePeers
+                .filter(peer => document.getElementById(`peer-${peer.url}`).checked)
+                .map(peer => peer.url);
+            
+            if (selectedPeers.length === 0) {
+                showStatus('Please select at least one peer', 'error', 'fas fa-exclamation-triangle');
+                return;
+            }
+            
+            closePeerSelectionModal();
+            
+            for (const file of pendingFiles) {
+                await uploadFileSelective(file, selectedPeers);
+            }
+            
+            refreshFiles();
+        }
+
+        async function uploadFiles(files) {
+            for (const file of files) {
+                await uploadFile(file);
+            }
+            refreshFiles();
+        }
+
+        async function uploadFile(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                showStatus(`Uploading ${file.name} to all peers...`, 'info', 'fas fa-upload');
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+                if (response.ok) {
+                    showStatus(`${file.name} uploaded successfully!`, 'success', 'fas fa-check-circle');
+                } else {
+                    showStatus(`Upload failed: ${result.error}`, 'error', 'fas fa-exclamation-triangle');
+                }
+            } catch (error) {
+                showStatus(`Upload error: ${error.message}`, 'error', 'fas fa-times-circle');
+            }
+        }
+
+        async function uploadFileSelective(file, selectedPeers) {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('selectedPeers', JSON.stringify(selectedPeers));
+
+            try {
+                showStatus(`Uploading ${file.name} to ${selectedPeers.length} selected peers...`, 'info', 'fas fa-upload');
+                const response = await fetch('/upload-selective', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+                if (response.ok) {
+                    showStatus(`${file.name} uploaded to ${result.distributedTo} selected peers!`, 'success', 'fas fa-check-circle');
+                } else {
+                    showStatus(`Selective upload failed: ${result.error}`, 'error', 'fas fa-exclamation-triangle');
+                }
+            } catch (error) {
+                showStatus(`Selective upload error: ${error.message}`, 'error', 'fas fa-times-circle');
+            }
+        }
+
+        async function connectToPeer() {
+            const peerUrl = document.getElementById('peerUrl').value.trim();
+            const peerName = document.getElementById('peerName').value.trim();
+            
+            if (!peerUrl) {
+                showStatus('Please enter a peer URL', 'error', 'fas fa-exclamation-triangle');
+                return;
+            }
+
+            try {
+                showStatus('Connecting to peer...', 'info', 'fas fa-spinner loading');
+                const response = await fetch('/connect-peer', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ peerUrl, peerName })
+                });
+
+                const result = await response.json();
+                if (response.ok) {
+                    showStatus('Connected to peer successfully!', 'success', 'fas fa-check-circle');
+                    document.getElementById('peerUrl').value = '';
+                    document.getElementById('peerName').value = '';
+                    refreshPeers();
+                    refreshFiles();
+                } else {
+                    showStatus(`Connection failed: ${result.error}`, 'error', 'fas fa-times-circle');
+                }
+            } catch (error) {
+                showStatus(`Connection error: ${error.message}`, 'error', 'fas fa-times-circle');
+            }
+        }
+
+        async function removePeer(peerUrl, peerName) {
+            if (!confirm(`Remove peer "${peerName}"? This will hide all files uploaded by this peer.`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/remove-peer', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ peerUrl })
+                });
+
+                const result = await response.json();
+                if (response.ok) {
+                    showStatus(`Peer removed. Hidden ${result.removedFiles} files.`, 'success', 'fas fa-check-circle');
+                    refreshPeers();
+                    refreshFiles();
+                } else {
+                    showStatus(`Failed to remove peer: ${result.error}`, 'error', 'fas fa-times-circle');
+                }
+            } catch (error) {
+                showStatus(`Error removing peer: ${error.message}`, 'error', 'fas fa-times-circle');
+            }
+        }
+
+        async function disconnectAll() {
+            if (!confirm('Disconnect from all peers? This will hide all files from other peers.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/disconnect-all', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const result = await response.json();
+                if (response.ok) {
+                    showStatus(result.message, 'success', 'fas fa-check-circle');
+                    refreshPeers();
+                    refreshFiles();
+                } else {
+                    showStatus(`Failed to disconnect: ${result.error}`, 'error', 'fas fa-times-circle');
+                }
+            } catch (error) {
+                showStatus(`Error disconnecting: ${error.message}`, 'error', 'fas fa-times-circle');
+            }
+        }
+
+        async function refreshPeers() {
+            try {
+                const response = await fetch('/peer-status');
+                const data = await response.json();
+                thisNode = data.thisNode;
+                displayNodeInfo(data.thisNode, data.totalFiles);
+                displayPeers(data.peers);
+            } catch (error) {
+                showStatus(`Failed to load peers: ${error.message}`, 'error', 'fas fa-times-circle');
+            }
+        }
+
+        function displayNodeInfo(node, totalFiles) {
+            nodeInfo.innerHTML = `
+                <div class="info-item">
+                    <div class="info-label"><i class="fas fa-server"></i> Node Name</div>
+                    <div class="info-value">${node.name}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label"><i class="fas fa-link"></i> Node URL</div>
+                    <div class="info-value">${node.url}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label"><i class="fas fa-file"></i> Local Files</div>
+                    <div class="info-value">${node.filesCount}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label"><i class="fas fa-globe"></i> Network Files</div>
+                    <div class="info-value">${totalFiles}</div>
+                </div>
+            `;
+        }
+
+        function displayPeers(peers) {
+            if (peers.length === 0) {
+                peersList.innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-users"></i>
+                        <h3>No Connected Peers</h3>
+                        <p>Enter a peer URL above to connect to the network</p>
+                    </div>
+                `;
+                return;
+            }
+
+            peersList.innerHTML = peers.map(peer => `
+                <div class="peer-card">
+                    <div class="peer-header">
+                        <div class="peer-info">
+                            <h4><i class="fas fa-desktop"></i> ${peer.name}</h4>
+                            <div class="peer-url">${peer.url}</div>
+                            <div class="peer-stats">
+                                <div class="stat-item">
+                                    <i class="fas fa-file"></i>
+                                    <span>${peer.filesCount} files</span>
+                                </div>
+                                <div class="stat-item">
+                                    <i class="fas fa-clock"></i>
+                                    <span>${peer.lastSeen ? new Date(peer.lastSeen).toLocaleTimeString() : 'Unknown'}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="peer-actions">
+                            <span class="status-badge ${peer.active ? 'status-online' : 'status-offline'}">
+                                <i class="fas fa-circle"></i> ${peer.active ? 'Online' : 'Offline'}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="file-actions">
+                        <button class="btn btn-danger btn-small" onclick="removePeer('${peer.url}', '${peer.name}')">
+                            <i class="fas fa-trash"></i> Remove Peer
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function refreshFiles() {
+            try {
+                const response = await fetch('/files');
+                const data = await response.json();
+                displayFiles(data.files);
+            } catch (error) {
+                showStatus(`Failed to load files: ${error.message}`, 'error', 'fas fa-times-circle');
+            }
+        }
+
+        function displayFiles(files) {
+            if (files.length === 0) {
+                filesList.innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-folder-open"></i>
+                        <h3>No Files Available</h3>
+                        <p>Upload files or connect to peers to see shared files</p>
+                    </div>
+                `;
+                return;
+            }
+
+            filesList.innerHTML = files.map(file => {
+                const isVideo = file.isVideo;
+                const isLocal = thisNode && (file.uploadedBy === thisNode.name || file.uploadedFrom === thisNode.url);
+                const fileType = getFileType(file.originalName, file.mimeType);
+                const isSelective = file.distributionType === 'selective';
+                
+                return `
+                    <div class="file-card">
+                        <div class="file-header">
+                            <div class="file-title">
+                                <div class="file-icon ${fileType.class}">
+                                    <i class="${fileType.icon}"></i>
+                                </div>
+                                <div>
+                                    <div class="file-name">${file.originalName}</div>
+                                    <div class="file-meta">
+                                        <span><i class="fas fa-hdd"></i> ${formatBytes(file.size)}</span>
+                                        <span><i class="fas fa-calendar"></i> ${new Date(file.uploadTime).toLocaleDateString()}</span>
+                                        <span><i class="fas fa-puzzle-piece"></i> ${file.totalChunks} chunks</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 10px; align-items: center;">
+                                <div class="uploader-badge">
+                                    <i class="fas fa-user"></i>
+                                    ${file.uploadedBy} ${isLocal ? '(You)' : '(Peer)'}
+                                </div>
+                                ${isSelective ? `
+                                    <div class="distribution-badge">
+                                        <i class="fas fa-users-cog"></i>
+                                        Selective
+                                    </div>
+                                ` : ''}
+                            </div>
+                            <div class="chunk-distribution">
+                                <h5><i class="fas fa-sitemap"></i> Chunk Distribution</h5>
+                                <div class="chunk-list">
+                                    ${file.chunks.map(chunk => `
+                                        <div class="chunk-item">
+                                            Chunk ${chunk.chunkIndex}: ${chunk.nodeName}
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="file-actions">
+                            ${isVideo ? `
+                                <button class="btn btn-info btn-small" onclick="streamVideo('${file.id}', '${file.originalName}')">
+                                    <i class="fas fa-play"></i> Stream Video
+                                </button>
+                            ` : ''}
+                            <button class="btn btn-success btn-small" onclick="downloadFile('${file.id}', '${file.originalName}')">
+                                <i class="fas fa-download"></i> Download
+                            </button>
+                        </div>
+                        <div id="video-container-${file.id}" class="video-container" style="display: none;">
+                            <video id="video-${file.id}" class="video-player" controls>
+                                <source src="/stream/${file.id}" type="${file.mimeType}">
+                                Your browser does not support the video tag.
+                            </video>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function getFileType(filename, mimeType) {
+            if (mimeType.startsWith('video/')) {
+                return { class: 'video', icon: 'fas fa-video' };
+            } else if (mimeType.startsWith('image/')) {
+                return { class: 'image', icon: 'fas fa-image' };
+            } else if (mimeType.includes('document') || mimeType.includes('pdf') || mimeType.includes('text')) {
+                return { class: 'document', icon: 'fas fa-file-alt' };
+            } else {
+                return { class: 'other', icon: 'fas fa-file' };
+            }
+        }
+
+        function streamVideo(fileId, fileName) {
+            const container = document.getElementById(`video-container-${fileId}`);
+            const video = document.getElementById(`video-${fileId}`);
+            
+            if (container.style.display === 'none') {
+                container.style.display = 'block';
+                video.load();
+                showStatus(`Streaming ${fileName}...`, 'info', 'fas fa-play');
+            } else {
+                container.style.display = 'none';
+                video.pause();
+            }
+        }
+
+        async function downloadFile(fileId, fileName) {
+            try {
+                showStatus(`Downloading ${fileName}...`, 'info', 'fas fa-download');
+                const response = await fetch(`/download/${fileId}`);
+                
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = fileName;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                    showStatus(`${fileName} downloaded successfully!`, 'success', 'fas fa-check-circle');
+                } else {
+                    const error = await response.json();
+                    showStatus(`Download failed: ${error.error}`, 'error', 'fas fa-times-circle');
+                }
+            } catch (error) {
+                showStatus(`Download error: ${error.message}`, 'error', 'fas fa-times-circle');
+            }
+        }
+
+        function showStatus(message, type, icon) {
+            const statusDiv = document.createElement('div');
+            statusDiv.className = `status ${type}`;
+            statusDiv.innerHTML = `
+                <i class="${icon}"></i>
+                <span>${message}</span>
+            `;
+            
+            statusContainer.appendChild(statusDiv);
+            
+            setTimeout(() => {
+                statusDiv.style.animation = 'slideIn 0.3s ease-out reverse';
+                setTimeout(() => statusDiv.remove(), 300);
+            }, 5000);
+        }
+
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            if (event.target === peerSelectionModal) {
+                closePeerSelectionModal();
+            }
+        }
+
+        // Initialize
+        refreshPeers();
+        refreshFiles();
+        
+        // Auto-refresh every 30 seconds
+        setInterval(() => {
+            refreshPeers();
+            refreshFiles();
+        }, 30000);
+    </script>
+</body>
+</html>
