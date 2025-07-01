@@ -754,17 +754,30 @@
             flex-wrap: wrap;
         }
 
-        /* Video Player Styles */
-        .video-container {
+        /* Media Container Styles */
+        .media-container {
             padding: 25px;
             background: #000;
             border-radius: 0 0 var(--border-radius) var(--border-radius);
         }
 
-        .video-player {
+        .video-player, .image-preview {
             width: 100%;
             border-radius: 8px;
             outline: none;
+        }
+
+        .image-preview {
+            max-height: 500px;
+            object-fit: contain;
+            background: #f8f9fa;
+            cursor: zoom-in;
+        }
+
+        .image-preview.zoomed {
+            cursor: zoom-out;
+            max-height: none;
+            max-width: 100%;
         }
 
         /* Status Messages */
@@ -943,8 +956,15 @@
             border-radius: 4px;
         }
 
-        ::-webkit-scrollbar-thumb:hover {
-            background: var(--secondary-gradient);
+        .btn-warning {
+            background: linear-gradient(135deg, #ffc107, #ff8c00);
+            color: white;
+            box-shadow: 0 4px 15px rgba(255, 193, 7, 0.3);
+        }
+
+        .btn-warning:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(255, 193, 7, 0.4);
         }
     </style>
 </head>
@@ -954,7 +974,7 @@
         <div class="header">
             <div class="header-content">
                 <h1><i class="fas fa-network-wired"></i> P2P File Sharing Network</h1>
-                <p>Advanced peer-to-peer distributed file sharing with selective peer distribution</p>
+                <p>Advanced peer-to-peer distributed file sharing with image preview and video streaming</p>
             </div>
         </div>
 
@@ -1024,7 +1044,7 @@
                         <i class="fas fa-cloud-upload-alt"></i>
                     </div>
                     <div class="upload-text">Drag & Drop Files Here</div>
-                    <div class="upload-subtext" id="uploadSubtext">or click to browse • Files will be distributed across all connected peers</div>
+                    <div class="upload-subtext" id="uploadSubtext">or click to browse • Supports images, videos, and all file types</div>
                 </div>
                 <input type="file" id="fileInput" multiple style="display: none;">
             </div>
@@ -1079,7 +1099,7 @@
         const uploadSubtext = document.getElementById('uploadSubtext');
         
         let thisNode = null;
-        let uploadMode = 'all'; // 'all' or 'selective'
+        let uploadMode = 'all';
         let pendingFiles = [];
         let availablePeers = [];
 
@@ -1130,26 +1150,13 @@
 
         async function showPeerSelectionModal() {
             try {
-                console.log('Fetching active peers...');
                 const response = await fetch('/active-peers');
-                
-                console.log('Response status:', response.status);
-                console.log('Response headers:', response.headers.get('content-type'));
                 
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
                 
-                const contentType = response.headers.get('content-type');
-                if (!contentType || !contentType.includes('application/json')) {
-                    const text = await response.text();
-                    console.error('Non-JSON response:', text);
-                    throw new Error('Server returned non-JSON response');
-                }
-                
                 const data = await response.json();
-                console.log('Active peers data:', data);
-                
                 availablePeers = data.peers;
                 
                 if (availablePeers.length === 0) {
@@ -1160,7 +1167,6 @@
                 displayPeerSelection(availablePeers);
                 peerSelectionModal.style.display = 'block';
             } catch (error) {
-                console.error('Error in showPeerSelectionModal:', error);
                 showStatus(`Failed to load peers: ${error.message}`, 'error', 'fas fa-times-circle');
             }
         }
@@ -1261,6 +1267,29 @@
                 }
             } catch (error) {
                 showStatus(`Selective upload error: ${error.message}`, 'error', 'fas fa-times-circle');
+            }
+        }
+
+        async function deleteFile(fileId, fileName) {
+            if (!confirm(`Are you sure you want to delete "${fileName}"? This action cannot be undone.`)) {
+                return;
+            }
+
+            try {
+                showStatus(`Deleting ${fileName}...`, 'info', 'fas fa-trash');
+                const response = await fetch(`/delete/${fileId}`, {
+                    method: 'DELETE'
+                });
+
+                const result = await response.json();
+                if (response.ok) {
+                    showStatus(`${fileName} deleted successfully!`, 'success', 'fas fa-check-circle');
+                    refreshFiles();
+                } else {
+                    showStatus(`Delete failed: ${result.error}`, 'error', 'fas fa-exclamation-triangle');
+                }
+            } catch (error) {
+                showStatus(`Delete error: ${error.message}`, 'error', 'fas fa-times-circle');
             }
         }
 
@@ -1446,6 +1475,7 @@
 
             filesList.innerHTML = files.map(file => {
                 const isVideo = file.isVideo;
+                const isImage = file.mimeType.startsWith('image/');
                 const isLocal = thisNode && (file.uploadedBy === thisNode.name || file.uploadedFrom === thisNode.url);
                 const fileType = getFileType(file.originalName, file.mimeType);
                 const isSelective = file.distributionType === 'selective';
@@ -1495,15 +1525,29 @@
                                     <i class="fas fa-play"></i> Stream Video
                                 </button>
                             ` : ''}
+                            ${isImage ? `
+                                <button class="btn btn-warning btn-small" onclick="previewImage('${file.id}', '${file.originalName}')">
+                                    <i class="fas fa-eye"></i> Preview Image
+                                </button>
+                            ` : ''}
                             <button class="btn btn-success btn-small" onclick="downloadFile('${file.id}', '${file.originalName}')">
                                 <i class="fas fa-download"></i> Download
                             </button>
+                            ${isLocal ? `
+                                <button class="btn btn-danger btn-small" onclick="deleteFile('${file.id}', '${file.originalName}')">
+                                    <i class="fas fa-trash"></i> Delete
+                                </button>
+                            ` : ''}
                         </div>
-                        <div id="video-container-${file.id}" class="video-container" style="display: none;">
-                            <video id="video-${file.id}" class="video-player" controls>
-                                <source src="/stream/${file.id}" type="${file.mimeType}">
-                                Your browser does not support the video tag.
-                            </video>
+                        <div id="media-container-${file.id}" class="media-container" style="display: none;">
+                            ${isVideo ? `
+                                <video id="video-${file.id}" class="video-player" controls>
+                                    <source src="/stream/${file.id}" type="${file.mimeType}">
+                                    Your browser does not support the video tag.
+                                </video>
+                            ` : isImage ? `
+                                <img id="image-${file.id}" class="image-preview" src="/preview/${file.id}" alt="${file.originalName}" onclick="toggleImageZoom('${file.id}')">
+                            ` : ''}
                         </div>
                     </div>
                 `;
@@ -1523,7 +1567,7 @@
         }
 
         function streamVideo(fileId, fileName) {
-            const container = document.getElementById(`video-container-${fileId}`);
+            const container = document.getElementById(`media-container-${fileId}`);
             const video = document.getElementById(`video-${fileId}`);
             
             if (container.style.display === 'none') {
@@ -1534,6 +1578,22 @@
                 container.style.display = 'none';
                 video.pause();
             }
+        }
+
+        function previewImage(fileId, fileName) {
+            const container = document.getElementById(`media-container-${fileId}`);
+            
+            if (container.style.display === 'none') {
+                container.style.display = 'block';
+                showStatus(`Previewing ${fileName}...`, 'info', 'fas fa-eye');
+            } else {
+                container.style.display = 'none';
+            }
+        }
+
+        function toggleImageZoom(fileId) {
+            const image = document.getElementById(`image-${fileId}`);
+            image.classList.toggle('zoomed');
         }
 
         async function downloadFile(fileId, fileName) {
@@ -1592,6 +1652,288 @@
             }
         }
 
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(event) {
+            // Escape key to close modal
+            if (event.key === 'Escape' && peerSelectionModal.style.display === 'block') {
+                closePeerSelectionModal();
+            }
+            
+            // Ctrl+U for upload
+            if (event.ctrlKey && event.key === 'u') {
+                event.preventDefault();
+                fileInput.click();
+            }
+            
+            // Ctrl+R for refresh
+            if (event.ctrlKey && event.key === 'r') {
+                event.preventDefault();
+                refreshFiles();
+                refreshPeers();
+            }
+        });
+
+        // Auto-save scroll position
+        let scrollPosition = 0;
+        window.addEventListener('scroll', () => {
+            scrollPosition = window.scrollY;
+        });
+
+        function restoreScrollPosition() {
+            window.scrollTo(0, scrollPosition);
+        }
+
+        // Enhanced file type detection
+        function getDetailedFileType(filename, mimeType) {
+            const extension = filename.split('.').pop().toLowerCase();
+            
+            if (mimeType.startsWith('video/')) {
+                return { 
+                    class: 'video', 
+                    icon: 'fas fa-video',
+                    category: 'Video',
+                    canStream: true,
+                    canPreview: false
+                };
+            } else if (mimeType.startsWith('image/')) {
+                return { 
+                    class: 'image', 
+                    icon: 'fas fa-image',
+                    category: 'Image',
+                    canStream: false,
+                    canPreview: true
+                };
+            } else if (mimeType.startsWith('audio/')) {
+                return { 
+                    class: 'audio', 
+                    icon: 'fas fa-music',
+                    category: 'Audio',
+                    canStream: true,
+                    canPreview: false
+                };
+            } else if (mimeType.includes('pdf')) {
+                return { 
+                    class: 'document', 
+                    icon: 'fas fa-file-pdf',
+                    category: 'PDF',
+                    canStream: false,
+                    canPreview: false
+                };
+            } else if (mimeType.includes('document') || mimeType.includes('text') || 
+                       ['doc', 'docx', 'txt', 'rtf'].includes(extension)) {
+                return { 
+                    class: 'document', 
+                    icon: 'fas fa-file-alt',
+                    category: 'Document',
+                    canStream: false,
+                    canPreview: false
+                };
+            } else if (['zip', 'rar', '7z', 'tar', 'gz'].includes(extension)) {
+                return { 
+                    class: 'archive', 
+                    icon: 'fas fa-file-archive',
+                    category: 'Archive',
+                    canStream: false,
+                    canPreview: false
+                };
+            } else if (['exe', 'msi', 'dmg', 'deb', 'rpm'].includes(extension)) {
+                return { 
+                    class: 'executable', 
+                    icon: 'fas fa-cog',
+                    category: 'Executable',
+                    canStream: false,
+                    canPreview: false
+                };
+            } else {
+                return { 
+                    class: 'other', 
+                    icon: 'fas fa-file',
+                    category: 'Other',
+                    canStream: false,
+                    canPreview: false
+                };
+            }
+        }
+
+        // File search functionality
+        function createSearchBar() {
+            const searchContainer = document.createElement('div');
+            searchContainer.style.cssText = `
+                margin-bottom: 20px;
+                display: flex;
+                gap: 10px;
+                align-items: center;
+            `;
+            
+            const searchInput = document.createElement('input');
+            searchInput.type = 'text';
+            searchInput.placeholder = 'Search files...';
+            searchInput.style.cssText = `
+                flex: 1;
+                padding: 12px 16px;
+                border: 2px solid var(--border-color);
+                border-radius: 12px;
+                font-size: 1rem;
+                outline: none;
+                transition: var(--transition);
+            `;
+            
+            searchInput.addEventListener('input', (e) => {
+                filterFiles(e.target.value);
+            });
+            
+            const clearButton = document.createElement('button');
+            clearButton.className = 'btn btn-info btn-small';
+            clearButton.innerHTML = '<i class="fas fa-times"></i> Clear';
+            clearButton.onclick = () => {
+                searchInput.value = '';
+                filterFiles('');
+            };
+            
+            searchContainer.appendChild(searchInput);
+            searchContainer.appendChild(clearButton);
+            
+            return searchContainer;
+        }
+
+        function filterFiles(searchTerm) {
+            const fileCards = document.querySelectorAll('.file-card');
+            const term = searchTerm.toLowerCase();
+            
+            fileCards.forEach(card => {
+                const fileName = card.querySelector('.file-name').textContent.toLowerCase();
+                const uploader = card.querySelector('.uploader-badge').textContent.toLowerCase();
+                
+                if (fileName.includes(term) || uploader.includes(term)) {
+                    card.style.display = 'block';
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+        }
+
+        // Drag and drop enhancements
+        function enhanceDragDrop() {
+            let dragCounter = 0;
+            
+            document.addEventListener('dragenter', (e) => {
+                e.preventDefault();
+                dragCounter++;
+                if (dragCounter === 1) {
+                    document.body.style.backgroundColor = 'rgba(102, 126, 234, 0.05)';
+                }
+            });
+            
+            document.addEventListener('dragleave', (e) => {
+                e.preventDefault();
+                dragCounter--;
+                if (dragCounter === 0) {
+                    document.body.style.backgroundColor = '';
+                }
+            });
+            
+            document.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dragCounter = 0;
+                document.body.style.backgroundColor = '';
+            });
+        }
+
+        // File upload progress tracking
+        function createProgressBar() {
+            const progressContainer = document.createElement('div');
+            progressContainer.id = 'uploadProgress';
+            progressContainer.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 4px;
+                background: rgba(102, 126, 234, 0.2);
+                z-index: 9999;
+                display: none;
+            `;
+            
+            const progressBar = document.createElement('div');
+            progressBar.style.cssText = `
+                height: 100%;
+                background: var(--primary-gradient);
+                width: 0%;
+                transition: width 0.3s ease;
+            `;
+            
+            progressContainer.appendChild(progressBar);
+            document.body.appendChild(progressContainer);
+            
+            return { container: progressContainer, bar: progressBar };
+        }
+
+        // Initialize enhancements
+        function initializeEnhancements() {
+            // Add search bar to file list
+            const fileListCard = document.querySelector('#filesList').parentElement;
+            const searchBar = createSearchBar();
+            fileListCard.insertBefore(searchBar, document.querySelector('#filesList'));
+            
+            // Initialize drag and drop enhancements
+            enhanceDragDrop();
+            
+            // Create progress bar
+            const progress = createProgressBar();
+            
+            // Add tooltips to buttons
+            document.querySelectorAll('.btn').forEach(btn => {
+                const icon = btn.querySelector('i');
+                if (icon) {
+                    btn.title = btn.textContent.trim();
+                }
+            });
+        }
+
+        // Network status indicator
+        function createNetworkStatus() {
+            const statusIndicator = document.createElement('div');
+            statusIndicator.id = 'networkStatus';
+            statusIndicator.style.cssText = `
+                position: fixed;
+                bottom: 20px;
+                left: 20px;
+                padding: 10px 15px;
+                background: var(--success-gradient);
+                color: white;
+                border-radius: 20px;
+                font-size: 0.9rem;
+                font-weight: 500;
+                z-index: 1000;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            `;
+            
+            statusIndicator.innerHTML = '<i class="fas fa-wifi"></i> Online';
+            document.body.appendChild(statusIndicator);
+            
+            // Monitor network status
+            window.addEventListener('online', () => {
+                statusIndicator.style.background = 'var(--success-gradient)';
+                statusIndicator.innerHTML = '<i class="fas fa-wifi"></i> Online';
+            });
+            
+            window.addEventListener('offline', () => {
+                statusIndicator.style.background = 'var(--danger-gradient)';
+                statusIndicator.innerHTML = '<i class="fas fa-wifi-slash"></i> Offline';
+            });
+        }
+
+        // Initialize everything
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeEnhancements();
+            createNetworkStatus();
+            refreshPeers();
+            refreshFiles();
+        });
+
         // Initialize
         refreshPeers();
         refreshFiles();
@@ -1601,6 +1943,40 @@
             refreshPeers();
             refreshFiles();
         }, 30000);
+
+        // Performance monitoring
+        let lastRefresh = Date.now();
+        function monitorPerformance() {
+            const now = Date.now();
+            const timeSinceLastRefresh = now - lastRefresh;
+            
+            if (timeSinceLastRefresh > 60000) { // More than 1 minute
+                console.log('Performance: Long time since last refresh, checking connection...');
+                // Could add connection health check here
+            }
+            
+            lastRefresh = now;
+        }
+
+        // Add performance monitoring to refresh functions
+        const originalRefreshFiles = refreshFiles;
+        refreshFiles = function() {
+            monitorPerformance();
+            return originalRefreshFiles.apply(this, arguments);
+        };
+
+        // Service worker for offline functionality (optional)
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(registration => {
+                        console.log('SW registered: ', registration);
+                    })
+                    .catch(registrationError => {
+                        console.log('SW registration failed: ', registrationError);
+                    });
+            });
+        }
     </script>
 </body>
 </html>
