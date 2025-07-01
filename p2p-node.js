@@ -978,6 +978,144 @@ app.get('/health', (req, res) => {
     });
 });
 
+app.delete('/delete/:fileId', async (req, res) => {
+    try {
+        const { fileId } = req.params;
+        const metadata = globalFileMetadata.get(fileId);
+        
+        if (!metadata) {
+            return res.status(404).json({ error: 'File not found' });
+        }
+
+        // Check if the file was uploaded by this node
+        if (metadata.uploadedFrom !== NODE_URL) {
+            return res.status(403).json({ error: 'You can only delete files you uploaded' });
+        }
+
+        // Delete chunks from all nodes
+        const deletePromises = metadata.chunks.map(async (chunkInfo) => {
+            try {
+                if (chunkInfo.nodeUrl === NODE_URL) {
+                    // Delete local chunk
+                    localChunks.delete(chunkInfo.chunkId);
+                    const chunkPath = path.join('chunks', `${chunkInfo.chunkId}.chunk`);
+                    try {
+                        await fs.unlink(chunkPath);
+                    } catch (error) {
+                        console.log(`Chunk file ${chunkInfo.chunkId} not found on disk`);
+                    }
+                } else {
+                    // Delete chunk from peer
+                    await axios.delete(`${chunkInfo.nodeUrl}/delete-chunk/${chunkInfo.chunkId}`);
+                }
+            } catch (error) {
+                console.error(`Failed to delete chunk ${chunkInfo.chunkId} from ${chunkInfo.nodeUrl}:`, error.message);
+            }
+        });
+
+        await Promise.allSettled(deletePromises);
+
+        // Remove metadata locally
+        globalFileMetadata.delete(fileId);
+        await saveMetadata();
+
+        // Notify peers to remove metadata
+        const notifyPromises = Array.from(connectedPeers).map(async (peerUrl) => {
+            try {
+                await axios.post(`${peerUrl}/remove-file-metadata`, {
+                    fileId,
+                    sender: NODE_URL
+                });
+            } catch (error) {
+                console.error(`Failed to notify ${peerUrl} about file deletion:`, error.message);
+            }
+        });
+
+        await Promise.allSettled(notifyPromises);
+
+        console.log(`File ${metadata.originalName} deleted successfully`);
+        res.json({ 
+            message: 'File deleted successfully',
+            fileName: metadata.originalName
+        });
+
+    } catch (error) {
+        console.error('Delete file error:', error);
+        res.status(500).json({ error: 'Failed to delete file' });
+    }
+});
+
+// Delete chunk endpoint
+app.delete('/delete-chunk/:chunkId', async (req, res) => {
+    try {
+        const { chunkId } = req.params;
+        
+        // Remove from memory
+        localChunks.delete(chunkId);
+        
+        // Remove from disk
+        const chunkPath = path.join('chunks', `${chunkId}.chunk`);
+        try {
+            await fs.unlink(chunkPath);
+        } catch (error) {
+            console.log(`Chunk file ${chunkId} not found on disk`);
+        }
+
+        console.log(`Chunk ${chunkId} deleted`);
+        res.json({ message: 'Chunk deleted successfully' });
+
+    } catch (error) {
+        console.error('Delete chunk error:', error);
+        res.status(500).json({ error: 'Failed to delete chunk' });
+    }
+});
+
+// Remove file metadata endpoint (called by peers)
+app.post('/remove-file-metadata', async (req, res) => {
+    try {
+        const { fileId, sender } = req.body;
+        
+        if (globalFileMetadata.has(fileId)) {
+            globalFileMetadata.delete(fileId);
+            await saveMetadata();
+            console.log(`Removed metadata for file ${fileId} as requested by ${sender}`);
+        }
+        
+        res.json({ message: 'Metadata removed' });
+
+    } catch (error) {
+        console.error('Remove metadata error:', error);
+        res.status(500).json({ error: 'Failed to remove metadata' });
+    }
+});
+
+// Image preview endpoint
+app.get('/preview/:fileId', async (req, res) => {
+    try {
+        const { fileId } = req.params;
+        const metadata = globalFileMetadata.get(fileId);
+        
+        if (!metadata) {
+            return res.status(404).json({ error: 'File not found' });
+        }
+
+        if (!metadata.mimeType.startsWith('image/')) {
+            return res.status(400).json({ error: 'File is not an image' });
+        }
+
+        const chunks = await getAllChunks(metadata);
+        const fileBuffer = Buffer.concat(chunks.map(chunk => chunk.data));
+
+        res.setHeader('Content-Type', metadata.mimeType);
+        res.setHeader('Content-Length', fileBuffer.length);
+        res.setHeader('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
+        res.send(fileBuffer);
+
+    } catch (error) {
+        console.error('Preview error:', error);
+        res.status(500).json({ error: 'Preview failed' });
+    }
+});
 // Add error handling middleware
 app.use((error, req, res, next) => {
     console.error('Server error:', error);
