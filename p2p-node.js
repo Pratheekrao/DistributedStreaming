@@ -18,17 +18,66 @@ const PEERS_FILE = path.join(STORAGE_DIR, 'peers.json');
 const NODE_INFO_FILE = path.join(STORAGE_DIR, 'node-info.json');
 
 // Get local IP address
+// Get local IP address - IMPROVED VERSION
 function getLocalIP() {
     const interfaces = os.networkInterfaces();
-    for (const name of Object.keys(interfaces)) {
-        for (const interface of interfaces[name]) {
+    
+    // Priority order for different operating systems
+    const priorityInterfaces = [
+        'Wi-Fi',        // Windows
+        'Ethernet',     // Windows
+        'en0',          // macOS WiFi
+        'en1',          // macOS Ethernet
+        'eth0',         // Linux
+        'wlan0',        // Linux WiFi
+        'Wireless LAN adapter Wi-Fi', // Windows verbose
+    ];
+    
+    // First, try priority interfaces
+    for (const interfaceName of priorityInterfaces) {
+        if (interfaces[interfaceName]) {
+            for (const interface of interfaces[interfaceName]) {
+                if (interface.family === 'IPv4' && !interface.internal) {
+                    console.log(`Using interface: ${interfaceName} - IP: ${interface.address}`);
+                    return interface.address;
+                }
+            }
+        }
+    }
+    
+    // Fallback: find any non-internal IPv4 address
+    for (const interfaceName in interfaces) {
+        const networkInterface = interfaces[interfaceName];
+        for (const interface of networkInterface) {
             if (interface.family === 'IPv4' && !interface.internal) {
+                // Skip Docker, VirtualBox, and other virtual interfaces
+                if (!interface.address.startsWith('172.') && 
+                    !interface.address.startsWith('10.') && 
+                    !interfaceName.toLowerCase().includes('docker') &&
+                    !interfaceName.toLowerCase().includes('vbox') &&
+                    !interfaceName.toLowerCase().includes('vmware')) {
+                    console.log(`Using fallback interface: ${interfaceName} - IP: ${interface.address}`);
+                    return interface.address;
+                }
+            }
+        }
+    }
+    
+    // Final fallback: any non-loopback IPv4
+    for (const interfaceName in interfaces) {
+        const networkInterface = interfaces[interfaceName];
+        for (const interface of networkInterface) {
+            if (interface.family === 'IPv4' && !interface.internal) {
+                console.log(`Using final fallback interface: ${interfaceName} - IP: ${interface.address}`);
                 return interface.address;
             }
         }
     }
+    
+    console.log('No suitable network interface found, using localhost');
     return 'localhost';
 }
+
 
 const LOCAL_IP = getLocalIP();
 const NODE_URL = `http://${LOCAL_IP}:${PORT}`;
@@ -539,6 +588,163 @@ app.post('/upload', upload.single('file'), async (req, res) => {
     }
 });
 
+// File upload with peer selection endpoint
+app.post('/upload-selective', upload.single('file'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: 'No file uploaded' });
+        }
+
+        const selectedPeers = req.body.selectedPeers ? JSON.parse(req.body.selectedPeers) : [];
+        
+        // Filter active peers based on selection
+        const activePeers = Array.from(connectedPeers).filter(peer => 
+            peerHealth.get(peer)?.active !== false && selectedPeers.includes(peer)
+        );
+
+        const fileId = crypto.randomUUID();
+        const filePath = req.file.path;
+        const originalName = req.file.originalname;
+        const fileSize = req.file.size;
+        const mimeType = req.file.mimetype;
+        
+        const isVideo = mimeType.startsWith('video/');
+        
+        const fileBuffer = await fs.readFile(filePath);
+        const totalNodes = activePeers.length + 1; // Include this node
+        const chunkSize = Math.ceil(fileSize / Math.min(totalNodes, 5));
+        const chunks = [];
+        
+        for (let i = 0; i < fileBuffer.length; i += chunkSize) {
+            chunks.push(fileBuffer.slice(i, i + chunkSize));
+        }
+
+        // Distribute chunks only among selected peers (and this node)
+        const allNodes = [NODE_URL, ...activePeers];
+        const chunkMetadata = [];
+        
+        for (let i = 0; i < chunks.length; i++) {
+            const nodeIndex = i % allNodes.length;
+            const nodeUrl = allNodes[nodeIndex];
+            const chunkId = crypto.randomUUID();
+            
+            try {
+                if (nodeUrl === NODE_URL) {
+                    localChunks.set(chunkId, {
+                        fileId,
+                        chunkIndex: i,
+                        data: chunks[i].toString('base64'),
+                        storedAt: new Date().toISOString()
+                    });
+                    
+                    const chunkPath = path.join('chunks', `${chunkId}.chunk`);
+                    await fs.writeFile(chunkPath, chunks[i].toString('base64'));
+                } else {
+                    await axios.post(`${nodeUrl}/store-chunk`, {
+                        chunkId,
+                        fileId,
+                        chunkIndex: i,
+                        data: chunks[i].toString('base64')
+                    });
+                }
+                
+                chunkMetadata.push({
+                    chunkId,
+                    chunkIndex: i,
+                    nodeUrl,
+                    nodeName: nodeUrl === NODE_URL ? NODE_NAME : (peerHealth.get(nodeUrl)?.name || 'Unknown'),
+                    size: chunks[i].length
+                });
+            } catch (error) {
+                console.error(`Failed to store chunk ${i} on node ${nodeUrl}:`, error.message);
+                if (nodeUrl !== NODE_URL) {
+                    peerHealth.set(nodeUrl, { ...peerHealth.get(nodeUrl), active: false });
+                }
+                return res.status(500).json({ error: 'Failed to distribute file chunks' });
+            }
+        }
+
+        const fileMetadata = {
+            id: fileId,
+            originalName,
+            size: fileSize,
+            mimeType,
+            isVideo,
+            uploadTime: new Date().toISOString(),
+            uploadedBy: NODE_NAME,
+            uploadedFrom: NODE_URL,
+            chunks: chunkMetadata,
+            totalChunks: chunks.length,
+            selectedPeers: selectedPeers, // Track which peers were selected
+            distributionType: 'selective' // Mark as selective distribution
+        };
+
+        globalFileMetadata.set(fileId, fileMetadata);
+        await saveMetadata();
+
+        // Broadcast metadata only to selected peers
+        const broadcastPromises = activePeers.map(async (peerUrl) => {
+            try {
+                await axios.post(`${peerUrl}/receive-metadata`, {
+                    metadata: fileMetadata,
+                    sender: NODE_URL
+                });
+            } catch (error) {
+                console.error(`Failed to broadcast to ${peerUrl}:`, error.message);
+                peerHealth.set(peerUrl, { ...peerHealth.get(peerUrl), active: false });
+            }
+        });
+        
+        await Promise.allSettled(broadcastPromises);
+
+        await fs.unlink(filePath);
+
+        res.json({
+            message: `File uploaded and distributed to ${activePeers.length} selected peers`,
+            fileId,
+            metadata: fileMetadata,
+            distributedTo: activePeers.length
+        });
+
+    } catch (error) {
+        console.error('Selective upload error:', error);
+        res.status(500).json({ error: 'Selective upload failed' });
+    }
+});
+
+// Get active peers for selection - FIXED ENDPOINT
+app.get('/active-peers', (req, res) => {
+    try {
+        console.log('Active peers endpoint called');
+        console.log('Connected peers:', Array.from(connectedPeers));
+        
+        const activePeers = Array.from(connectedPeers)
+            .filter(peerUrl => {
+                const health = peerHealth.get(peerUrl);
+                return health && health.active !== false;
+            })
+            .map(peerUrl => ({
+                url: peerUrl,
+                name: peerHealth.get(peerUrl)?.name || 'Unknown',
+                filesCount: Array.from(globalFileMetadata.values())
+                    .filter(file => file.uploadedFrom === peerUrl).length
+            }));
+        
+        console.log('Returning active peers:', activePeers);
+        
+        res.json({ 
+            peers: activePeers,
+            thisNode: { 
+                name: NODE_NAME, 
+                url: NODE_URL 
+            }
+        });
+    } catch (error) {
+        console.error('Error in /active-peers:', error);
+        res.status(500).json({ error: 'Failed to get active peers: ' + error.message });
+    }
+});
+
 // Store chunk endpoint
 app.post('/store-chunk', async (req, res) => {
     try {
@@ -772,148 +978,16 @@ app.get('/health', (req, res) => {
     });
 });
 
-// File upload with peer selection endpoint
-app.post('/upload-selective', upload.single('file'), async (req, res) => {
-    try {
-        if (!req.file) {
-            return res.status(400).json({ error: 'No file uploaded' });
-        }
-
-        const selectedPeers = req.body.selectedPeers ? JSON.parse(req.body.selectedPeers) : [];
-        
-        // Filter active peers based on selection
-        const activePeers = Array.from(connectedPeers).filter(peer => 
-            peerHealth.get(peer)?.active !== false && selectedPeers.includes(peer)
-        );
-
-        const fileId = crypto.randomUUID();
-        const filePath = req.file.path;
-        const originalName = req.file.originalname;
-        const fileSize = req.file.size;
-        const mimeType = req.file.mimetype;
-        
-        const isVideo = mimeType.startsWith('video/');
-        
-        const fileBuffer = await fs.readFile(filePath);
-        const totalNodes = activePeers.length + 1; // Include this node
-        const chunkSize = Math.ceil(fileSize / Math.min(totalNodes, 5));
-        const chunks = [];
-        
-        for (let i = 0; i < fileBuffer.length; i += chunkSize) {
-            chunks.push(fileBuffer.slice(i, i + chunkSize));
-        }
-
-        // Distribute chunks only among selected peers (and this node)
-        const allNodes = [NODE_URL, ...activePeers];
-        const chunkMetadata = [];
-        
-        for (let i = 0; i < chunks.length; i++) {
-            const nodeIndex = i % allNodes.length;
-            const nodeUrl = allNodes[nodeIndex];
-            const chunkId = crypto.randomUUID();
-            
-            try {
-                if (nodeUrl === NODE_URL) {
-                    localChunks.set(chunkId, {
-                        fileId,
-                        chunkIndex: i,
-                        data: chunks[i].toString('base64'),
-                        storedAt: new Date().toISOString()
-                    });
-                    
-                    const chunkPath = path.join('chunks', `${chunkId}.chunk`);
-                    await fs.writeFile(chunkPath, chunks[i].toString('base64'));
-                } else {
-                    await axios.post(`${nodeUrl}/store-chunk`, {
-                        chunkId,
-                        fileId,
-                        chunkIndex: i,
-                        data: chunks[i].toString('base64')
-                    });
-                }
-                
-                chunkMetadata.push({
-                    chunkId,
-                    chunkIndex: i,
-                    nodeUrl,
-                    nodeName: nodeUrl === NODE_URL ? NODE_NAME : (peerHealth.get(nodeUrl)?.name || 'Unknown'),
-                    size: chunks[i].length
-                });
-            } catch (error) {
-                console.error(`Failed to store chunk ${i} on node ${nodeUrl}:`, error.message);
-                if (nodeUrl !== NODE_URL) {
-                    peerHealth.set(nodeUrl, { ...peerHealth.get(nodeUrl), active: false });
-                }
-                return res.status(500).json({ error: 'Failed to distribute file chunks' });
-            }
-        }
-
-        const fileMetadata = {
-            id: fileId,
-            originalName,
-            size: fileSize,
-            mimeType,
-            isVideo,
-            uploadTime: new Date().toISOString(),
-            uploadedBy: NODE_NAME,
-            uploadedFrom: NODE_URL,
-            chunks: chunkMetadata,
-            totalChunks: chunks.length,
-            selectedPeers: selectedPeers, // Track which peers were selected
-            distributionType: 'selective' // Mark as selective distribution
-        };
-
-        globalFileMetadata.set(fileId, fileMetadata);
-        await saveMetadata();
-
-        // Broadcast metadata only to selected peers
-        const broadcastPromises = activePeers.map(async (peerUrl) => {
-            try {
-                await axios.post(`${peerUrl}/receive-metadata`, {
-                    metadata: fileMetadata,
-                    sender: NODE_URL
-                });
-            } catch (error) {
-                console.error(`Failed to broadcast to ${peerUrl}:`, error.message);
-                peerHealth.set(peerUrl, { ...peerHealth.get(peerUrl), active: false });
-            }
-        });
-        
-        await Promise.allSettled(broadcastPromises);
-
-        await fs.unlink(filePath);
-
-        res.json({
-            message: `File uploaded and distributed to ${activePeers.length} selected peers`,
-            fileId,
-            metadata: fileMetadata,
-            distributedTo: activePeers.length
-        });
-
-    } catch (error) {
-        console.error('Selective upload error:', error);
-        res.status(500).json({ error: 'Selective upload failed' });
-    }
+// Add error handling middleware
+app.use((error, req, res, next) => {
+    console.error('Server error:', error);
+    res.status(500).json({ error: 'Internal server error: ' + error.message });
 });
 
-// Get active peers for selection
-app.get('/active-peers', (req, res) => {
-    const activePeers = Array.from(connectedPeers)
-        .filter(peerUrl => peerHealth.get(peerUrl)?.active !== false)
-        .map(peerUrl => ({
-            url: peerUrl,
-            name: peerHealth.get(peerUrl)?.name || 'Unknown',
-            filesCount: Array.from(globalFileMetadata.values())
-                .filter(file => file.uploadedFrom === peerUrl).length
-        }));
-    
-    res.json({ 
-        peers: activePeers,
-        thisNode: { 
-            name: NODE_NAME, 
-            url: NODE_URL 
-        }
-    });
+// Add 404 handler for unmatched routes
+app.use('*', (req, res) => {
+    console.log('404 - Route not found:', req.originalUrl);
+    res.status(404).json({ error: 'Route not found' });
 });
 
 // Periodic health check with peers and save state
